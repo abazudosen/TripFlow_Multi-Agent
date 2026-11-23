@@ -1,0 +1,972 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TripFlow | Multi-Agent Travel Planning</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --border: #e2e8f0;
+      --text: #0f172a;
+      --muted: #64748b;
+      --primary: #2563eb;
+      --primary-dark: #1d4ed8;
+      --ok: #059669;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --planner: #2563eb;
+      --researcher: #7c3aed;
+      --policy: #d97706;
+      --coordinator: #059669;
+      --human: #db2777;
+      --system: #64748b;
+      --checkpoint: #475569;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      font-family: -apple-system, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---------- HERO ---------- */
+    .hero {
+      background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      color: #fff;
+      padding: 2rem 1.25rem 2.5rem;
+    }
+    .hero-inner {
+      max-width: 1180px;
+      margin: 0 auto;
+      display: grid;
+      gap: 1.25rem;
+    }
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(1.4rem, 2.6vw, 2rem);
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 720px;
+      font-size: 1rem;
+      color: rgba(255,255,255,0.78);
+    }
+    .agent-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.25rem;
+    }
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 0.82rem;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+      transition: background 0.25s ease, border-color 0.25s ease, transform 0.2s ease, box-shadow 0.3s ease;
+    }
+    .chip .dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: currentColor;
+      display: inline-block;
+    }
+    .chip.planner    { color: #93c5fd; }
+    .chip.researcher { color: #c4b5fd; }
+    .chip.policy     { color: #fcd34d; }
+    .chip.coordinator{ color: #6ee7b7; }
+    .chip.human      { color: #f9a8d4; }
+    .chip.active {
+      background: rgba(255,255,255,0.28);
+      border-color: rgba(255,255,255,0.7);
+      color: #fff;
+      transform: scale(1.06);
+      box-shadow: 0 0 0 4px rgba(255,255,255,0.12), 0 4px 14px rgba(0,0,0,0.2);
+    }
+    .chip.active .dot {
+      box-shadow: 0 0 0 0 currentColor;
+      animation: dotPulse 0.9s ease-out;
+    }
+    @keyframes dotPulse {
+      0%   { box-shadow: 0 0 0 0 currentColor; }
+      100% { box-shadow: 0 0 0 8px transparent; }
+    }
+
+    /* ---------- LAYOUT ---------- */
+    .wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 1.25rem;
+      display: grid;
+      gap: 1rem;
+    }
+    .grid-main {
+      display: grid;
+      gap: 1rem;
+      grid-template-columns: 1fr;
+    }
+    @media (min-width: 960px) {
+      .grid-main { grid-template-columns: 1.35fr 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.25rem;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    }
+    .card h2 {
+      margin: 0 0 0.9rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+    }
+
+    /* ---------- STATUS BANNER ---------- */
+    .status-banner {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.9rem 1rem;
+      border-radius: 12px;
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      margin-bottom: 1rem;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .status-banner .icon { font-size: 1.25rem; line-height: 1; }
+    .status-banner .body { flex: 1; min-width: 0; }
+    .status-banner .title { font-weight: 700; font-size: 0.92rem; margin-bottom: 0.2rem; }
+    .status-banner .desc { font-size: 0.88rem; color: #475569; word-wrap: break-word; }
+    .status-banner.awaiting_approval { background: #fffbeb; border-color: #fde68a; }
+    .status-banner.awaiting_approval .title { color: #b45309; }
+    .status-banner.ready_to_resume   { background: #ecfdf5; border-color: #a7f3d0; }
+    .status-banner.completed         { background: #ecfdf5; border-color: #a7f3d0; }
+    .status-banner.completed .title  { color: var(--ok); }
+    .status-banner.blocked           { background: #fef2f2; border-color: #fecaca; }
+    .status-banner.blocked .title    { color: var(--bad); }
+
+    /* ---------- BUTTONS ---------- */
+    .btn-row { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-top: 1rem; }
+    button {
+      font: inherit;
+      font-weight: 600;
+      border: 0;
+      border-radius: 10px;
+      padding: 0.65rem 1rem;
+      cursor: pointer;
+      transition: transform 0.05s ease, background 0.15s ease, opacity 0.15s ease;
+      background: var(--primary);
+      color: #fff;
+      position: relative;
+    }
+    button:hover:not(:disabled):not(.loading) { background: var(--primary-dark); }
+    button:active:not(:disabled):not(.loading) { transform: translateY(1px); }
+    button:disabled { background: #e2e8f0; color: #94a3b8; cursor: not-allowed; }
+    button.secondary { background: #64748b; }
+    button.secondary:hover:not(:disabled) { background: #475569; }
+    button.good { background: var(--ok); }
+    button.good:hover:not(:disabled) { background: #047857; }
+    button.warn { background: var(--warn); }
+    button.warn:hover:not(:disabled) { background: #b45309; }
+    button.primary-cta {
+      width: 100%;
+      padding: 1rem;
+      font-size: 1.02rem;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #2563eb, #4f46e5);
+      box-shadow: 0 4px 14px rgba(37, 99, 235, 0.25);
+    }
+    button.primary-cta:hover:not(:disabled) { background: linear-gradient(135deg, #1d4ed8, #4338ca); }
+    button.loading {
+      color: transparent !important;
+      pointer-events: none;
+    }
+    button.loading::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 16px; height: 16px;
+      margin: -8px 0 0 -8px;
+      border: 2px solid rgba(255,255,255,0.35);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.65s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    label { display: block; font-size: 0.82rem; font-weight: 600; color: var(--muted); margin-bottom: 0.4rem; margin-top: 1rem; }
+    textarea {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0.75rem;
+      font: inherit;
+      font-size: 0.92rem;
+      color: var(--text);
+      background: #fff;
+      min-height: 82px;
+      resize: vertical;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+    }
+
+    .session-id {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+      background: #f8fafc;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.5rem 0.7rem;
+      word-break: break-all;
+      margin-bottom: 0.25rem;
+    }
+
+    /* ---------- QUOTE BAR ---------- */
+    .quote-viz { margin-top: 1rem; }
+    .quote-viz .row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 0.86rem; color: var(--muted); margin-bottom: 0.4rem;
+    }
+    .quote-viz .total { font-size: 1.15rem; font-weight: 700; color: var(--text); }
+    .bar { position: relative; height: 12px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+    .bar-fill {
+      position: absolute; inset: 0 auto 0 0;
+      border-radius: 999px;
+      transition: width 0.4s ease, background 0.25s ease;
+    }
+    .bar-legend {
+      display: flex; justify-content: space-between;
+      font-size: 0.72rem; color: var(--muted);
+      margin-top: 0.4rem;
+    }
+
+    /* ---------- STATE CARDS ---------- */
+    .kv { display: grid; gap: 0.55rem; }
+    .kv-row {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 0.45rem 0;
+      border-bottom: 1px dashed #eef2f7;
+      font-size: 0.9rem;
+    }
+    .kv-row:last-child { border-bottom: 0; }
+    .kv-row .k { color: var(--muted); }
+    .kv-row .v { font-weight: 600; text-align: right; }
+    .kv-section-title {
+      font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted);
+      margin: 1rem 0 0.4rem;
+    }
+    .kv-section-title:first-child { margin-top: 0; }
+    .empty { color: var(--muted); font-size: 0.88rem; text-align: center; padding: 1rem 0; font-style: italic; }
+
+    /* ---------- TRACE TIMELINE ---------- */
+    .trace-pane {
+      max-height: 420px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .trace-item {
+      position: relative;
+      padding: 0.6rem 0.75rem 0.6rem 1.4rem;
+      border-radius: 8px;
+      margin-bottom: 0.5rem;
+      background: #fafbfc;
+      border-left: 3px solid var(--system);
+      font-size: 0.88rem;
+      animation: traceIn 0.28s ease-out;
+    }
+    @keyframes traceIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .trace-item.planner    { border-left-color: var(--planner);     background: #eff6ff; }
+    .trace-item.monitor    { border-left-color: var(--policy);      background: #fffbeb; }
+    .trace-item.executor   { border-left-color: var(--coordinator); background: #ecfdf5; }
+    .trace-item.approval   { border-left-color: var(--human);       background: #fdf2f8; }
+    .trace-item.checkpoint { border-left-color: var(--checkpoint);  background: #f1f5f9; }
+    .trace-item.user       { border-left-color: #94a3b8;            background: #f8fafc; }
+    .trace-item .meta {
+      display: flex; align-items: center; gap: 0.5rem;
+      font-size: 0.74rem; color: var(--muted);
+      margin-bottom: 0.2rem;
+    }
+    .trace-item .agent { font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; }
+    .trace-item.planner    .agent { color: var(--planner); }
+    .trace-item.monitor    .agent { color: var(--policy); }
+    .trace-item.executor   .agent { color: var(--coordinator); }
+    .trace-item.approval   .agent { color: var(--human); }
+    .trace-item.checkpoint .agent { color: var(--checkpoint); }
+    .trace-item .msg { color: #1e293b; }
+    .trace-item .data {
+      margin-top: 0.3rem; font-size: 0.74rem; color: var(--muted);
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      word-break: break-word;
+    }
+
+    /* ---------- TOASTS ---------- */
+    .toast-container {
+      position: fixed;
+      top: 1rem; right: 1rem;
+      z-index: 300;
+      display: flex; flex-direction: column; gap: 0.5rem;
+      pointer-events: none;
+    }
+    .toast {
+      display: flex; align-items: center; gap: 0.6rem;
+      padding: 0.7rem 0.95rem;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      box-shadow: 0 8px 24px rgba(15,23,42,0.14);
+      font-size: 0.88rem;
+      max-width: 360px;
+      animation: toastIn 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+      pointer-events: auto;
+    }
+    .toast.error   { border-color: #fecaca; background: #fef2f2; }
+    .toast.success { border-color: #a7f3d0; background: #ecfdf5; }
+    .toast.leaving { animation: toastOut 0.25s ease-in forwards; }
+    @keyframes toastIn {
+      from { transform: translateX(24px); opacity: 0; }
+      to   { transform: translateX(0);    opacity: 1; }
+    }
+    @keyframes toastOut {
+      to { transform: translateX(24px); opacity: 0; }
+    }
+
+    /* ---------- MODAL ---------- */
+    .modal {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      z-index: 200;
+      justify-content: center; align-items: center;
+      padding: 1rem;
+    }
+    .modal.active { display: flex; }
+    .modal-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 1.75rem;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+      animation: pop 0.18s ease-out;
+    }
+    @keyframes pop {
+      from { transform: scale(0.96); opacity: 0; }
+      to   { transform: scale(1);    opacity: 1; }
+    }
+    .modal-card h3 { margin: 0 0 1rem; font-size: 1.15rem; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem; }
+
+    /* ---------- ITINERARY ---------- */
+    .itin-table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    .itin-table td { padding: 0.45rem 0; border-bottom: 1px solid #eef2f7; }
+    .itin-table tr:last-child td { border-bottom: 0; }
+    .itin-table .label { color: var(--muted); }
+    .itin-table .value { font-weight: 600; text-align: right; }
+    .itin-table .total-row .value { font-size: 1.1rem; color: var(--ok); }
+    .booking-ref {
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      background: #ecfdf5; color: var(--ok);
+      padding: 0.15rem 0.5rem; border-radius: 6px;
+      font-size: 0.85rem; font-weight: 700;
+    }
+  </style>
+</head>
+<body>
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <header class="hero">
+    <div class="hero-inner">
+      <div>
+        <h1>TripFlow — Multi-Agent Travel Planning</h1>
+        <p>Five specialist agents plan, price, and police your trip — with a human in the loop whenever it matters. Watch each handoff appear in the trace in real time.</p>
+      </div>
+      <div class="agent-chips" aria-label="Agents in this workflow">
+        <span class="chip planner"    data-chip="planner"><span class="dot"></span>🧭 Planner</span>
+        <span class="chip researcher" data-chip="researcher"><span class="dot"></span>🔍 Researcher</span>
+        <span class="chip policy"     data-chip="policy"><span class="dot"></span>🛡️ Policy Guard</span>
+        <span class="chip coordinator" data-chip="coordinator"><span class="dot"></span>🧩 Coordinator</span>
+        <span class="chip human"      data-chip="human"><span class="dot"></span>👤 Human Reviewer</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="grid-main">
+      <section class="card">
+        <h2>Your Request</h2>
+
+        <div id="statusBanner" class="status-banner collecting_intent">
+          <span class="icon" id="statusIcon">🚀</span>
+          <div class="body">
+            <div class="title" id="statusTitle">Ready to start</div>
+            <div class="desc" id="statusDesc">Click <strong>Create Travel Request</strong> below to launch a new session.</div>
+          </div>
+        </div>
+
+        <div id="idBlock" style="display:none; margin-bottom: 1rem;">
+          <label>Travel Request ID</label>
+          <div class="session-id" id="sessionIdEl">—</div>
+        </div>
+
+        <button id="createBtn" class="primary-cta">✨ Create Travel Request</button>
+
+        <div id="chatBlock" style="display:none;">
+          <label for="message">Describe your trip</label>
+          <textarea id="message">Book a trip to Tokyo next month with budget 1800 for 2 travelers</textarea>
+          <div class="btn-row">
+            <button id="chatBtn" style="flex:1;">Send Request Details</button>
+            <button id="refreshBtn" class="secondary">↻ Refresh</button>
+          </div>
+        </div>
+
+        <div class="btn-row" id="approvalRow" style="display:none;">
+          <button id="approveBtn" class="good" style="flex:1;">✓ Approve Booking</button>
+          <button id="denyBtn" class="warn" style="flex:1;">✗ Deny</button>
+        </div>
+
+        <div class="quote-viz" id="quoteViz" style="display:none;">
+          <div class="row">
+            <span>Quoted total</span>
+            <span class="total" id="quoteTotal">$0</span>
+          </div>
+          <div class="bar" id="quoteBar">
+            <div class="bar-fill" id="quoteFill" style="width: 0%; background: var(--ok);"></div>
+          </div>
+          <div class="bar-legend">
+            <span>$0</span>
+            <span id="limitApprovalLabel">Approval $1,200</span>
+            <span id="limitBlockedLabel">Hard limit $2,200</span>
+          </div>
+        </div>
+      </section>
+
+      <aside class="card">
+        <h2>Trip Snapshot</h2>
+        <div id="stateBody">
+          <div class="empty">No session yet. Create a request to see its structured state here.</div>
+        </div>
+      </aside>
+    </div>
+
+    <section class="card">
+      <h2>Agent Trace <span id="traceLiveBadge" style="display:none; font-size: 0.72rem; text-transform: none; letter-spacing: 0; color: var(--ok); font-weight: 600;">● live</span></h2>
+      <div class="trace-pane" id="traceOut">
+        <div class="empty">The trace shows every handoff between agents. Run a request to see it populate live.</div>
+      </div>
+    </section>
+  </div>
+
+  <div id="itineraryModal" class="modal">
+    <div class="modal-card">
+      <h3>🎉 Trip Booked!</h3>
+      <table class="itin-table" id="itinTable"></table>
+      <div class="modal-actions">
+        <button id="itineraryClose" class="secondary">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="abandonModal" class="modal">
+    <div class="modal-card">
+      <h3>⚠️ Abandon current request?</h3>
+      <p style="color: var(--muted); margin: 0 0 0.5rem;">You already have an active travel request. Creating a new one will end this one. Continue?</p>
+      <div class="modal-actions">
+        <button id="modalCancel" class="secondary">Cancel</button>
+        <button id="modalConfirm" class="warn">Create New Request</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ---------- DOM ---------- */
+    const createBtn    = document.getElementById('createBtn');
+    const chatBtn      = document.getElementById('chatBtn');
+    const refreshBtn   = document.getElementById('refreshBtn');
+    const approveBtn   = document.getElementById('approveBtn');
+    const denyBtn      = document.getElementById('denyBtn');
+
+    const idBlock      = document.getElementById('idBlock');
+    const sessionIdEl  = document.getElementById('sessionIdEl');
+    const chatBlock    = document.getElementById('chatBlock');
+    const approvalRow  = document.getElementById('approvalRow');
+    const messageEl    = document.getElementById('message');
+
+    const statusBanner = document.getElementById('statusBanner');
+    const statusIcon   = document.getElementById('statusIcon');
+    const statusTitle  = document.getElementById('statusTitle');
+    const statusDesc   = document.getElementById('statusDesc');
+
+    const quoteViz     = document.getElementById('quoteViz');
+    const quoteTotal   = document.getElementById('quoteTotal');
+    const quoteFill    = document.getElementById('quoteFill');
+    const limitApprovalLabel = document.getElementById('limitApprovalLabel');
+    const limitBlockedLabel  = document.getElementById('limitBlockedLabel');
+
+    const stateBody    = document.getElementById('stateBody');
+    const traceOut     = document.getElementById('traceOut');
+    const traceBadge   = document.getElementById('traceLiveBadge');
+
+    const itineraryModal = document.getElementById('itineraryModal');
+    const itinTable      = document.getElementById('itinTable');
+    const itineraryClose = document.getElementById('itineraryClose');
+
+    const abandonModal = document.getElementById('abandonModal');
+    const modalCancel  = document.getElementById('modalCancel');
+    const modalConfirm = document.getElementById('modalConfirm');
+
+    const toastContainer = document.getElementById('toastContainer');
+
+    /* ---------- APP STATE ---------- */
+    let sessionId = '';
+    let currentStatus = '';
+    let displayedTraceLength = 0;
+
+    const STEP_META = {
+      system:     { label: 'System',         icon: '⚙️' },
+      user:       { label: 'You',            icon: '💬' },
+      planner:    { label: 'Planner',        icon: '🧭' },
+      checkpoint: { label: 'Checkpoint',     icon: '💾' },
+      monitor:    { label: 'Policy Guard',   icon: '🛡️' },
+      approval:   { label: 'Human Reviewer', icon: '👤' },
+      executor:   { label: 'Coordinator',    icon: '🧩' },
+    };
+
+    /* ---------- HELPERS ---------- */
+    const fmt = (n) => `$${Number(n || 0).toLocaleString()}`;
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, (c) => ({
+        '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+      }[c]));
+    }
+
+    /* ---------- TOASTS ---------- */
+    function showToast(message, type = 'info', duration = 4200) {
+      const el = document.createElement('div');
+      el.className = `toast ${type}`;
+      const icon = type === 'error' ? '⚠️' : type === 'success' ? '✅' : 'ℹ️';
+      el.innerHTML = `<span>${icon}</span><span>${escapeHtml(message)}</span>`;
+      toastContainer.appendChild(el);
+      setTimeout(() => {
+        el.classList.add('leaving');
+        setTimeout(() => el.remove(), 260);
+      }, duration);
+    }
+
+    /* ---------- CHIP PULSE ---------- */
+    const chipTimers = {};
+    function pulseChip(name) {
+      const chip = document.querySelector(`.chip[data-chip="${name}"]`);
+      if (!chip) return;
+      chip.classList.add('active');
+      clearTimeout(chipTimers[name]);
+      chipTimers[name] = setTimeout(() => chip.classList.remove('active'), 1400);
+    }
+    function pulseForStep(step, event) {
+      if (step === 'planner') {
+        // Quote estimation is conceptually the researcher's job
+        const isQuotes = event.data && (event.data.flight !== undefined || event.data.total !== undefined);
+        pulseChip(isQuotes ? 'researcher' : 'planner');
+      } else if (step === 'monitor')    pulseChip('policy');
+      else if (step === 'approval')     pulseChip('human');
+      else if (step === 'executor')     pulseChip('coordinator');
+    }
+
+    /* ---------- STATUS ---------- */
+    function renderStatusBanner(payload) {
+      const status  = payload ? payload.status  : '';
+      const message = payload ? payload.message : '';
+      const hasSession = Boolean(sessionId);
+
+      let icon = '🚀', title = 'Ready to start',
+          desc = 'Click <strong>Create Travel Request</strong> below to launch a new session.';
+
+      if (hasSession) {
+        if (status === 'collecting_intent') {
+          icon = '📝'; title = 'Gathering trip details';
+          desc = message || 'Add destination, budget, month, and travelers.';
+        } else if (status === 'awaiting_approval') {
+          icon = '⏳'; title = 'Waiting for your approval';
+          desc = message || 'The quote crossed the approval limit. Approve or deny to continue.';
+        } else if (status === 'ready_to_resume') {
+          icon = '▶️'; title = 'Ready to resume';
+          desc = message || 'Policy revalidated. The booking can proceed.';
+        } else if (status === 'completed') {
+          icon = '✅'; title = 'Booking complete';
+          desc = message || 'Your trip has been booked.';
+        } else if (status === 'blocked') {
+          icon = '🚫'; title = 'Blocked by policy';
+          desc = message || 'This request cannot continue. Start a new one with different parameters.';
+        }
+      }
+
+      statusBanner.className = 'status-banner ' + (status || 'collecting_intent');
+      statusIcon.textContent = icon;
+      statusTitle.textContent = title;
+      statusDesc.innerHTML = desc;
+    }
+
+    /* ---------- QUOTE VIZ ---------- */
+    function renderQuoteViz(state) {
+      if (!state || !state.quotes || !state.quotes.total) {
+        quoteViz.style.display = 'none'; return;
+      }
+      quoteViz.style.display = '';
+      const total    = state.quotes.total;
+      const approval = (state.policy && state.policy.approval_limit) || 1200;
+      const blocked  = (state.policy && state.policy.blocked_limit)  || 2200;
+      const max = Math.max(blocked * 1.1, total * 1.15);
+      const pct = Math.min(100, (total / max) * 100);
+      let color = 'var(--ok)';
+      if (total >= blocked)      color = 'var(--bad)';
+      else if (total >= approval) color = 'var(--warn)';
+
+      quoteTotal.textContent = fmt(total);
+      quoteFill.style.width = pct + '%';
+      quoteFill.style.background = color;
+      limitApprovalLabel.textContent = `Approval ${fmt(approval)}`;
+      limitBlockedLabel.textContent  = `Hard limit ${fmt(blocked)}`;
+    }
+
+    /* ---------- STATE CARD ---------- */
+    function kvRow(k, v) {
+      return `<div class="kv-row"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+    }
+    function renderState(payload) {
+      if (!payload || !payload.state) {
+        stateBody.innerHTML = '<div class="empty">No session yet. Create a request to see its structured state here.</div>';
+        return;
+      }
+      const s = payload.state;
+      const req = s.request || {}, quotes = s.quotes || {}, policy = s.policy || {};
+      const rows = [];
+      rows.push('<div class="kv-section-title">Trip</div>');
+      rows.push(kvRow('Destination', req.destination || '—'));
+      rows.push(kvRow('Month',       req.month       || '—'));
+      rows.push(kvRow('Travelers',   req.travelers   ?? '—'));
+      rows.push(kvRow('Budget',      req.budget ? fmt(req.budget) : '—'));
+      if (quotes.total) {
+        rows.push('<div class="kv-section-title">Quotes</div>');
+        rows.push(kvRow('✈️ Flight',    fmt(quotes.flight)));
+        rows.push(kvRow('🏨 Hotel',     fmt(quotes.hotel)));
+        rows.push(kvRow('🛡️ Insurance', fmt(quotes.insurance)));
+        rows.push(kvRow('<strong>Total</strong>', `<strong>${fmt(quotes.total)}</strong>`));
+      }
+      rows.push('<div class="kv-section-title">Policy</div>');
+      rows.push(kvRow('Approval limit', fmt(policy.approval_limit)));
+      rows.push(kvRow('Hard limit',     fmt(policy.blocked_limit)));
+      if (s.booking_reference) {
+        rows.push('<div class="kv-section-title">Booking</div>');
+        rows.push(kvRow('Reference', `<span class="booking-ref">${escapeHtml(s.booking_reference)}</span>`));
+      }
+      stateBody.innerHTML = `<div class="kv">${rows.join('')}</div>`;
+    }
+
+    /* ---------- TRACE ---------- */
+    function traceItemEl(event) {
+      const meta = STEP_META[event.step] || { label: event.step, icon: '•' };
+      const time = (event.ts || '').split('T')[1]?.slice(0, 8) || '';
+      const hasData = event.data && Object.keys(event.data).length;
+      const el = document.createElement('div');
+      el.className = `trace-item ${event.step}`;
+      el.innerHTML = `
+        <div class="meta">
+          <span>${meta.icon}</span>
+          <span class="agent">${escapeHtml(meta.label)}</span>
+          <span>· ${escapeHtml(time)}</span>
+        </div>
+        <div class="msg">${escapeHtml(event.message)}</div>
+        ${hasData ? `<div class="data">${escapeHtml(JSON.stringify(event.data))}</div>` : ''}
+      `;
+      return el;
+    }
+
+    function renderTraceFull(trace) {
+      displayedTraceLength = trace.length;
+      if (!trace.length) {
+        traceOut.innerHTML = '<div class="empty">The trace shows every handoff between agents. Run a request to see it populate live.</div>';
+        return;
+      }
+      traceOut.innerHTML = '';
+      trace.forEach((e) => traceOut.appendChild(traceItemEl(e)));
+      traceOut.scrollTop = traceOut.scrollHeight;
+    }
+
+    function appendTraceItem(event) {
+      const empty = traceOut.querySelector('.empty');
+      if (empty) empty.remove();
+      traceOut.appendChild(traceItemEl(event));
+      traceOut.scrollTop = traceOut.scrollHeight;
+      pulseForStep(event.step, event);
+    }
+
+    function setLive(on) {
+      traceBadge.style.display = on ? '' : 'none';
+    }
+
+    /* ---------- BUTTON CONTROLS ---------- */
+    function updateControls(status) {
+      const hasSession = Boolean(sessionId);
+      const isApproval = status === 'awaiting_approval';
+      const isTerminal = status === 'blocked' || status === 'completed';
+
+      createBtn.style.display = hasSession && !isTerminal ? 'none' : '';
+      createBtn.disabled = false;
+
+      idBlock.style.display     = hasSession ? '' : 'none';
+      chatBlock.style.display   = hasSession ? '' : 'none';
+      approvalRow.style.display = isApproval ? '' : 'none';
+
+      chatBtn.disabled    = !hasSession || isApproval || status === 'blocked';
+      refreshBtn.disabled = !hasSession;
+      approveBtn.disabled = !hasSession || !isApproval;
+      denyBtn.disabled    = !hasSession || !isApproval;
+
+      createBtn.textContent = hasSession && isTerminal
+        ? '✨ Start New Request'
+        : '✨ Create Travel Request';
+    }
+
+    function setLoading(btn, loading) {
+      if (loading) {
+        btn.classList.add('loading');
+        btn.dataset.wasDisabled = String(btn.disabled);
+        btn.disabled = true;
+      } else {
+        btn.classList.remove('loading');
+        // updateControls() will set the correct disabled state next.
+      }
+    }
+
+    /* ---------- ITINERARY ---------- */
+    function showItinerary(payload) {
+      const s = payload.state || {};
+      const req = s.request || {}, quotes = s.quotes || {};
+      const ref = payload.booking_reference || s.booking_reference || '—';
+      itinTable.innerHTML = `
+        <tr><td class="label">Destination</td><td class="value">${escapeHtml(req.destination || '—')}</td></tr>
+        <tr><td class="label">Month</td>      <td class="value">${escapeHtml(req.month || '—')}</td></tr>
+        <tr><td class="label">Travelers</td>  <td class="value">${req.travelers ?? '—'}</td></tr>
+        <tr><td class="label">Budget</td>     <td class="value">${req.budget ? fmt(req.budget) : '—'}</td></tr>
+        <tr><td class="label">✈️ Flight</td>   <td class="value">${fmt(quotes.flight)}</td></tr>
+        <tr><td class="label">🏨 Hotel</td>    <td class="value">${fmt(quotes.hotel)}</td></tr>
+        <tr><td class="label">🛡️ Insurance</td><td class="value">${fmt(quotes.insurance)}</td></tr>
+        <tr class="total-row"><td class="label"><strong>Total</strong></td><td class="value">${fmt(quotes.total)}</td></tr>
+        <tr><td class="label">Booking Ref</td><td class="value"><span class="booking-ref">${escapeHtml(ref)}</span></td></tr>
+      `;
+      itineraryModal.classList.add('active');
+    }
+
+    /* ---------- RENDER RESPONSE ---------- */
+    function renderResponse(payload, opts = {}) {
+      if (!payload) return;
+      currentStatus = payload.status || '';
+      sessionId = payload.session_id || sessionId;
+      sessionIdEl.textContent = sessionId || '—';
+
+      renderStatusBanner(payload);
+      updateControls(currentStatus);
+      renderState(payload);
+      if (!opts.skipTrace) renderTraceFull(payload.trace || []);
+      renderQuoteViz(payload.state);
+      if (currentStatus === 'completed' && !opts.skipItinerary) showItinerary(payload);
+    }
+
+    /* ---------- SSE STREAM ---------- */
+    async function streamRequest(url, body, handlers) {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { msg = (await res.json()).detail || msg; } catch {}
+        throw new Error(msg);
+      }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          const frames = buffer.split('\n\n');
+          buffer = frames.pop() ?? '';
+
+          for (const frame of frames) {
+            if (!frame.trim()) continue;
+            let eventName = 'message';
+            const dataLines = [];
+            for (const line of frame.split('\n')) {
+              if (line.startsWith('event: '))      eventName = line.slice(7).trim();
+              else if (line.startsWith('data: '))  dataLines.push(line.slice(6));
+            }
+            if (!dataLines.length) continue;
+            let payload;
+            try { payload = JSON.parse(dataLines.join('\n')); }
+            catch (e) { console.warn('Bad SSE payload', e); continue; }
+            const h = handlers[eventName];
+            if (h) {
+              try { await h(payload); }
+              catch (e) { console.error('Handler error', e); }
+            }
+          }
+        }
+      } finally {
+        try { reader.releaseLock(); } catch {}
+      }
+    }
+
+    /* ---------- API ---------- */
+    async function api(path, body = null) {
+      const res = await fetch(path, {
+        method: 'POST',
+        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`${res.status} ${res.statusText}: ${text}`);
+      }
+      return res.json();
+    }
+
+    async function createSession() {
+      const payload = await api('/api/session');
+      sessionId = payload.session_id;
+      currentStatus = payload.status || '';
+      renderResponse(payload);
+    }
+
+    async function sendChat() {
+      if (!sessionId) throw new Error('Create a session first.');
+      setLoading(chatBtn, true);
+      setLive(true);
+      try {
+        await streamRequest('/api/chat/stream',
+          { session_id: sessionId, message: messageEl.value },
+          {
+            trace: (evt) => { displayedTraceLength++; appendTraceItem(evt); },
+            done:  (payload) => {
+              renderResponse(payload, { skipTrace: true });
+              if (payload.status === 'awaiting_approval') {
+                showToast('Quote ready — approval required.', 'info');
+              } else if (payload.status === 'completed') {
+                showToast('Trip booked successfully.', 'success');
+              } else if (payload.status === 'blocked') {
+                showToast('Workflow blocked by policy.', 'error');
+              }
+            },
+            error: (payload) => showToast(payload.message || 'Stream error', 'error'),
+          });
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        setLoading(chatBtn, false);
+        setLive(false);
+        updateControls(currentStatus);
+      }
+    }
+
+    async function sendApproval(approve) {
+      if (!sessionId) throw new Error('Create a session first.');
+      const btn = approve ? approveBtn : denyBtn;
+      setLoading(btn, true);
+      setLive(true);
+      try {
+        await streamRequest('/api/approval/stream',
+          { session_id: sessionId, approve },
+          {
+            trace: (evt) => { displayedTraceLength++; appendTraceItem(evt); },
+            done:  (payload) => {
+              renderResponse(payload, { skipTrace: true });
+              if (payload.status === 'completed') showToast('Booking complete.', 'success');
+              if (payload.status === 'blocked')   showToast('Run stopped — no booking made.', 'info');
+            },
+            error: (payload) => showToast(payload.message || 'Stream error', 'error'),
+          });
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        setLoading(btn, false);
+        setLive(false);
+        updateControls(currentStatus);
+      }
+    }
+
+    async function refreshSession() {
+      if (!sessionId) throw new Error('Create a session first.');
+      const res = await fetch(`/api/session/${encodeURIComponent(sessionId)}`);
+      if (!res.ok) throw new Error('Session not found.');
+      renderResponse(await res.json());
+    }
+
+    /* ---------- WIRING ---------- */
+    createBtn.addEventListener('click', async () => {
+      const terminal = currentStatus === 'completed' || currentStatus === 'blocked';
+      if (sessionId && !terminal) {
+        abandonModal.classList.add('active');
+      } else {
+        try { await createSession(); }
+        catch (err) { showToast(err.message, 'error'); }
+      }
+    });
+
+    modalCancel.addEventListener('click',  () => abandonModal.classList.remove('active'));
+    modalConfirm.addEventListener('click', async () => {
+      abandonModal.classList.remove('active');
+      sessionId = '';
+      try { await createSession(); }
+      catch (err) { showToast(err.message, 'error'); }
+    });
+
+    [ [chatBtn,    sendChat],
+      [refreshBtn, refreshSession],
+      [approveBtn, () => sendApproval(true)],
+      [denyBtn,    () => sendApproval(false)],
+    ].forEach(([btn, fn]) => {
+      btn.addEventListener('click', async () => {
+        try { await fn(); }
+        catch (err) { showToast(err.message, 'error'); }
+      });
+    });
+
+    itineraryClose.addEventListener('click', () => itineraryModal.classList.remove('active'));
+    itineraryModal.addEventListener('click', (e) => {
+      if (e.target === itineraryModal) itineraryModal.classList.remove('active');
+    });
+
+    /* ---------- BOOT ---------- */
+    renderStatusBanner(null);
+    updateControls('');
+  </script>
+</body>
+</html>
